@@ -1,0 +1,27 @@
+{
+  "name": "prism",
+  "version": "1.0.0",
+  "description": "AI API gateway that can route between LLMs. ",
+  "license": "ISC",
+  "author": "Rabbia Nadeem",
+  "type": "commonjs",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "echo \"No tests specified\""
+  },
+  "dependencies": {
+    "axios": "^1.15.0",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.1",
+    "express": "^5.2.1",
+    "helmet": "^8.1.0",
+    "pino": "^10.3.1",
+    "pino-http": "^11.0.0"
+  },
+  "devDependencies": {
+    "jest": "^30.3.0",
+    "nodemon": "^3.1.14",
+    "supertest": "^7.2.2"
+  }
+}
