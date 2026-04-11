@@ -49,7 +49,7 @@ const router = express.Router();
  *       400:
  *         description: Invalid request
  */
-router.post('/v1/chat/completions', async (req, res, next) => {
+router.post('/chat/completions', async (req, res, next) => {
   try {
     const { model, messages } = req.body || {};
 

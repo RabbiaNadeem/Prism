@@ -12,6 +12,8 @@ const swaggerUi = require('swagger-ui-express');
 const { swaggerSpec } = require('./swagger');
 const { aiRouter } = require('./routes/ai.routes');
 const { errorHandler } = require('./middleware/errorHandler');
+const { auth } = require('./middleware/auth');
+const { createRateLimiter } = require('./middleware/rateLimiter');
 
 const PORT = Number.parseInt(process.env.PORT, 10) || 3000;
 
@@ -23,12 +25,11 @@ function createApp() {
   // Middleware order matters:
   // 1) request logging
   // 2) security + CORS
-  // 3) body parsing
+  // 3) route-specific middleware (rate limit + auth)
+  // 4) body parsing
   app.use(pinoHttp());
   app.use(helmet());
   app.use(cors());
-  app.use(express.json({ limit: '1mb' }));
-  app.use(express.urlencoded({ extended: false }));
 
   // API documentation
   app.get('/openapi.json', (req, res) => {
@@ -55,8 +56,15 @@ function createApp() {
     res.status(200).send('Prism server running');
   });
 
-  // API routes
-  app.use(aiRouter);
+  // API routes (protected)
+  app.use(
+    '/v1',
+    createRateLimiter(),
+    auth,
+    express.json({ limit: '1mb' }),
+    express.urlencoded({ extended: false }),
+    aiRouter,
+  );
 
   // 404 handler (must be after routes)
   app.use((req, res) => {
