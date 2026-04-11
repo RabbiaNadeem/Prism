@@ -8,6 +8,7 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
+    "dev": "nodemon --watch src --ext js,json src/server.js",
     "test": "echo \"No tests specified\""
   },
   "dependencies": {
@@ -17,7 +18,9 @@
     "express": "^5.2.1",
     "helmet": "^8.1.0",
     "pino": "^10.3.1",
-    "pino-http": "^11.0.0"
+    "pino-http": "^11.0.0",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.1"
   },
   "devDependencies": {
     "jest": "^30.3.0",

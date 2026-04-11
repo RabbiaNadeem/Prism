@@ -11,5 +11,6 @@ npm start
 
 ## Scripts
 
-- `npm start` — runs `index.js`
+- `npm start` — runs `src/server.js`
+- `npm dev` — runs the server with nodemon
 - `npm test` — placeholder
