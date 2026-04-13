@@ -10,6 +10,19 @@ const swaggerSpec = swaggerJSDoc({
       title: 'Prism API',
       version: '1.0.0',
     },
+    components: {
+      securitySchemes: {
+        ApiKeyAuth: {
+          type: 'apiKey',
+          in: 'header',
+          name: 'x-api-key',
+        },
+        BearerAuth: {
+          type: 'http',
+          scheme: 'bearer',
+        },
+      },
+    },
     tags: [{ name: 'System' }, { name: 'AI' }],
     servers: [{ url: 'http://localhost:3000' }],
   },

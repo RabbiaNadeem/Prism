@@ -14,6 +14,9 @@ const router = express.Router();
  *       - AI
  *     summary: Create a chat completion
  *     description: Prism gateway endpoint compatible with the OpenAI-style chat completions shape.
+ *     security:
+ *       - ApiKeyAuth: []
+ *       - BearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
