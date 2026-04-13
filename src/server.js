@@ -59,8 +59,8 @@ function createApp() {
   // API routes (protected)
   app.use(
     '/v1',
-    createRateLimiter(),
     auth,
+    createRateLimiter(),
     express.json({ limit: '1mb' }),
     express.urlencoded({ extended: false }),
     aiRouter,
