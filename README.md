@@ -43,6 +43,36 @@ Optional env:
 
 When limited, the API returns `429` and sets `Retry-After` plus `X-RateLimit-*` headers.
 
+### Prompt safety middleware
+
+Prism applies a lightweight prompt safety check (heuristics for jailbreak / prompt injection and clearly harmful requests).
+
+This runs **after authentication and rate limiting** and rejects unsafe prompts with `400`.
+
+Env:
+
+- `PROMPT_SAFETY_ENABLED` (default `true`) — set to `false` to disable.
+
+### Redis response caching (chat completions)
+
+Prism caches successful `/v1/chat/completions` JSON responses in Redis so repeated prompts can return instantly.
+
+- Cache key: SHA-256 of `model + messages` (normalized) so the same prompt+model maps to the same key.
+- Response header: `X-Cache: HIT|MISS`
+ - Response header: `X-Cache: HIT|MISS|BYPASS`
+
+Env:
+
+- `AI_CACHE_ENABLED` (default `true`)
+- `AI_CACHE_TTL_SECONDS` (default `600`)
+- `AI_CACHE_PREFIX` (default `prism:chatcache`)
+
+Notes:
+
+- Requires the same Upstash env used by rate limiting: `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`.
+- Streaming requests (`stream: true`) are not cached.
+ - Streaming requests (`stream: true`) are not cached.
+
 ## Scripts
 
 - `npm start` — runs `src/server.js`
