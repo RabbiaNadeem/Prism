@@ -58,8 +58,7 @@ Env:
 Prism caches successful `/v1/chat/completions` JSON responses in Redis so repeated prompts can return instantly.
 
 - Cache key: SHA-256 of `model + messages` (normalized) so the same prompt+model maps to the same key.
-- Response header: `X-Cache: HIT|MISS`
- - Response header: `X-Cache: HIT|MISS|BYPASS`
+- Response header: `X-Cache: HIT|MISS|BYPASS`
 
 Env:
 
@@ -70,8 +69,36 @@ Env:
 Notes:
 
 - Requires the same Upstash env used by rate limiting: `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`.
-- Streaming requests (`stream: true`) are not cached.
- - Streaming requests (`stream: true`) are not cached.
+- Streaming requests (`stream: true`) are currently not supported (the endpoint returns `400`).
+
+## LLM provider routing
+
+Prism will try providers in priority order:
+
+1) Groq
+2) Gemini
+3) OpenRouter
+
+All providers are called via OpenAI-compatible Chat Completions endpoints.
+
+Env:
+
+- `GROQ_API_KEY` (required to use Groq)
+- `GROQ_BASE_URL` (default `https://api.groq.com/openai/v1`)
+
+- `GEMINI_API_KEY` (required to use Gemini)
+- `GEMINI_BASE_URL` (default `https://generativelanguage.googleapis.com/v1beta/openai`)
+- `GEMINI_AUTH_MODE` (default `x-goog-api-key`, can also be `bearer`)
+
+- `OPENROUTER_API_KEY` (required to use OpenRouter)
+- `OPENROUTER_BASE_URL` (default `https://openrouter.ai/api/v1`)
+- `OPENROUTER_HTTP_REFERER` (optional)
+- `OPENROUTER_X_TITLE` (optional)
+
+Optional:
+
+- `LLM_PROVIDER_TIMEOUT_MS` (default `15000`)
+- `PRISM_ECHO_FALLBACK` (default `false`) — when `true`, returns an echo response if all providers fail
 
 ## Scripts
 

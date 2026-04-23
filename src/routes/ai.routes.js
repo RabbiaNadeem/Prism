@@ -58,7 +58,7 @@ const aiCache = createAiCache();
  */
 router.post('/chat/completions', promptSafety, async (req, res, next) => {
   try {
-    const { model, messages, stream } = req.body || {};
+    const { messages, stream } = req.body || {};
 
     if (!Array.isArray(messages) || messages.length === 0) {
       const err = new Error('`messages` must be a non-empty array');
@@ -66,36 +66,18 @@ router.post('/chat/completions', promptSafety, async (req, res, next) => {
       throw err;
     }
 
-    // Cache runs before calling any provider/LLM.
-    // Only cache non-streaming requests.
-    if (aiCache.enabled && stream !== true) {
-      const key = aiCache.chatKey({ model, messages });
-
-      try {
-        const cached = await aiCache.get(key);
-        if (cached) {
-          res.set('X-Cache', 'HIT');
-          return res.status(200).json(cached);
-        }
-      } catch (err) {
-        req.log?.warn({ err }, 'AI cache read failed (bypassing)');
-      }
-
-      res.set('X-Cache', 'MISS');
-      const result = await createChatCompletion({ model, messages });
-
-      try {
-        await aiCache.set(key, result);
-      } catch (err) {
-        req.log?.warn({ err }, 'AI cache write failed (bypassing)');
-      }
-
-      return res.status(200).json(result);
+    if (stream === true) {
+      const err = new Error('Streaming is not supported on this endpoint (set `stream: false`)');
+      err.statusCode = 400;
+      throw err;
     }
 
-    res.set('X-Cache', 'BYPASS');
+    const { result, cacheStatus } = await createChatCompletion(req.body, {
+      cache: aiCache,
+      log: req.log,
+    });
 
-    const result = await createChatCompletion({ model, messages });
+    res.set('X-Cache', cacheStatus);
     return res.status(200).json(result);
   } catch (err) {
     next(err);
