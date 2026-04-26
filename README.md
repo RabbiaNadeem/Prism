@@ -1,107 +1,172 @@
 # Prism
 
-AI API gateway that can route between LLMs.
+Prism is an OpenAI-compatible AI API gateway built with Node.js and Express.  
+It routes chat completion requests across multiple providers (Groq, Gemini, OpenRouter), adds API-key auth, rate limiting, optional response caching, and prompt safety checks.
 
-## Getting started
+## What It Does
 
-```bash
-npm install
-npm start
+- Exposes `POST /v1/chat/completions` in OpenAI-style request/response shape
+- Validates client API keys (`Authorization: Bearer ...` or `x-api-key`)
+- Enforces per-key rate limiting via Upstash Redis (sliding window)
+- Tries providers in order and fails over if one provider errors
+- Optionally returns an echo fallback when all providers fail
+- Supports OpenAPI docs at `/api-docs` and raw spec at `/openapi.json`
+
+## Tech Stack
+
+- Node.js (CommonJS)
+- Express 5
+- Upstash Redis (`@upstash/redis`)
+- Swagger (`swagger-jsdoc`, `swagger-ui-express`)
+- Security/logging: `helmet`, `cors`, `pino-http`
+
+## Project Structure
+
+```text
+src/
+  server.js                 # App bootstrap and middleware wiring
+  swagger.js                # OpenAPI spec generation
+  routes/
+    ai.routes.js            # /v1/chat/completions route
+  services/
+    ai.service.js           # Service facade
+    llmRouter.js            # Provider routing, normalization, failover
+  middleware/
+    auth.js                 # API key auth
+    rateLimiter.js          # Redis sliding-window limiter
+    aiCache.js              # Optional response cache (Redis)
+    promptSafety.js         # Prompt safety heuristics
+    errorHandler.js         # Central error handler
 ```
 
-## Security
+## Requirements
 
-### API key authentication
+- Node.js 20+ (recommended)
+- npm
+- Upstash Redis credentials (required for rate limiting)
+- At least one provider API key (Groq, Gemini, or OpenRouter)
 
-All `/v1/*` endpoints require an API key.
+## Environment Variables
 
-- Header: `x-api-key: <key>`
-- Or: `Authorization: Bearer <key>`
+Create a `.env` file in the project root.
 
-Configure allowed keys via:
+### Server
 
-- `ALLOWED_API_KEY` — primary (can also be comma/newline separated)
-- Optional allow-list: `ALLOWED_API_KEYS`
-- Backwards-compatible: `PRISM_API_KEYS`, `PRISM_API_KEY`
+- `PORT` (default: `3000`)
 
-Admin-only routes (when added, e.g. `/admin/*`) should use `ADMIN_SECRET`.
+### Client Authentication (required)
 
-### Redis rate limiting (sliding window per API key)
+Use one of the following to allow client calls into Prism:
 
-Rate limiting is enforced per API key using Upstash Redis (REST).
+- `ALLOWED_API_KEY` (single key, or comma/newline separated)
+- `ALLOWED_API_KEYS` (allow list)
+- Backward compatible: `PRISM_API_KEYS` or `PRISM_API_KEY`
 
-Required env:
+### Rate Limiting (required in current implementation)
 
-- `UPSTASH_REDIS_REST_URL`
-- `UPSTASH_REDIS_REST_TOKEN`
+- `UPSTASH_REDIS_REST_URL` (required)
+- `UPSTASH_REDIS_REST_TOKEN` (required)
+- `RATE_LIMIT_WINDOW_MS` (default: `60000`)
+- `RATE_LIMIT_MAX` (default: `60`)
+- `RATE_LIMIT_PREFIX` (default: `prism:ratelimit`)
 
-Optional env:
+### AI Providers (configure at least one)
 
-- `RATE_LIMIT_WINDOW_MS` (default `60000`)
-- `RATE_LIMIT_MAX` (default `60`)
-- `RATE_LIMIT_PREFIX` (default `prism:ratelimit`)
+- `GROQ_API_KEY`
+- `GROQ_BASE_URL` (default: `https://api.groq.com/openai/v1`)
 
-When limited, the API returns `429` and sets `Retry-After` plus `X-RateLimit-*` headers.
+- `GEMINI_API_KEY`
+- `GEMINI_BASE_URL` (default: `https://generativelanguage.googleapis.com/v1beta/openai`)
+- `GEMINI_AUTH_MODE` (default: `x-goog-api-key`; also supports `bearer` and `api-key`)
 
-### Prompt safety middleware
-
-Prism applies a lightweight prompt safety check (heuristics for jailbreak / prompt injection and clearly harmful requests).
-
-This runs **after authentication and rate limiting** and rejects unsafe prompts with `400`.
-
-Env:
-
-- `PROMPT_SAFETY_ENABLED` (default `true`) — set to `false` to disable.
-
-### Redis response caching (chat completions)
-
-Prism caches successful `/v1/chat/completions` JSON responses in Redis so repeated prompts can return instantly.
-
-- Cache key: SHA-256 of `model + messages` (normalized) so the same prompt+model maps to the same key.
-- Response header: `X-Cache: HIT|MISS|BYPASS`
-
-Env:
-
-- `AI_CACHE_ENABLED` (default `true`)
-- `AI_CACHE_TTL_SECONDS` (default `600`)
-- `AI_CACHE_PREFIX` (default `prism:chatcache`)
-
-Notes:
-
-- Requires the same Upstash env used by rate limiting: `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`.
-- Streaming requests (`stream: true`) are currently not supported (the endpoint returns `400`).
-
-## LLM provider routing
-
-Prism will try providers in priority order:
-
-1) Groq
-2) Gemini
-3) OpenRouter
-
-All providers are called via OpenAI-compatible Chat Completions endpoints.
-
-Env:
-
-- `GROQ_API_KEY` (required to use Groq)
-- `GROQ_BASE_URL` (default `https://api.groq.com/openai/v1`)
-
-- `GEMINI_API_KEY` (required to use Gemini)
-- `GEMINI_BASE_URL` (default `https://generativelanguage.googleapis.com/v1beta/openai`)
-- `GEMINI_AUTH_MODE` (default `x-goog-api-key`, can also be `bearer`)
-
-- `OPENROUTER_API_KEY` (required to use OpenRouter)
-- `OPENROUTER_BASE_URL` (default `https://openrouter.ai/api/v1`)
+- `OPENROUTER_API_KEY`
+- `OPENROUTER_BASE_URL` (default: `https://openrouter.ai/api/v1`)
 - `OPENROUTER_HTTP_REFERER` (optional)
 - `OPENROUTER_X_TITLE` (optional)
 
-Optional:
+- `LLM_PROVIDER_TIMEOUT_MS` (default: `15000`)
+- `PRISM_ECHO_FALLBACK` (`true`/`false`, default: `false`)
 
-- `LLM_PROVIDER_TIMEOUT_MS` (default `15000`)
-- `PRISM_ECHO_FALLBACK` (default `false`) — when `true`, returns an echo response if all providers fail
+### Optional Features
 
-## Scripts
+- `AI_CACHE_ENABLED` (`true`/`false`, default: `true`, requires Upstash to be effective)
+- `AI_CACHE_TTL_SECONDS` (default: `600`)
+- `AI_CACHE_PREFIX` (default: `prism:chatcache`)
+- `PROMPT_SAFETY_ENABLED` (`true`/`false`, default: `true`)
 
-- `npm start` — runs `src/server.js`
-- `npm dev` — runs the server with nodemon
-- `npm test` — placeholder
+## Local Development
+
+Install and run:
+
+```bash
+npm install
+npm run dev
+```
+
+Production start:
+
+```bash
+npm start
+```
+
+## API Endpoints
+
+- `GET /` -> basic service status text
+- `GET /health` -> `{ "ok": true }`
+- `GET /openapi.json` -> OpenAPI JSON
+- `GET /api-docs` -> Swagger UI
+- `POST /v1/chat/completions` -> main AI gateway endpoint (auth required)
+
+## Request Example
+
+Use `body.json` as a base payload:
+
+```json
+{
+  "messages": [
+    { "role": "user", "content": "hi" }
+  ]
+}
+```
+
+Call the endpoint:
+
+```bash
+curl -X POST http://localhost:3000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: YOUR_ALLOWED_API_KEY" \
+  -d @body.json
+```
+
+## Docker
+
+Build and run:
+
+```bash
+docker build -t prism .
+docker run --rm -p 3000:3000 --env-file .env prism
+```
+
+## Notes
+
+- Streaming (`stream: true`) is currently rejected on `/v1/chat/completions`.
+- If no provider is configured, the API returns an error.
+- The current `test` script is a placeholder (`No tests specified`).
+
+## Frontend (React + Vite)
+
+A modern graphite/platinum frontend is available in `frontend/`.
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Set frontend API target with:
+
+```bash
+VITE_API_BASE_URL=http://localhost:3000
+```
+
+See `frontend/README.md` for full UI details and production build instructions.
