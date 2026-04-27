@@ -153,6 +153,29 @@ docker run --rm -p 3000:3000 --env-file .env prism
 - If no provider is configured, the API returns an error.
 - The current `test` script is a placeholder (`No tests specified`).
 
+## Observability
+
+Prism exposes Prometheus-style metrics at `GET /metrics` (public endpoint).
+
+High-level metrics include:
+
+- `prism_requests_total` (route/method/status request volume)
+- `prism_request_duration_ms` (latency histogram)
+- `prism_errors_total` (error volume by route/status/kind)
+- `prism_cache_events_total` (HIT/MISS/BYPASS for cache hit-rate tracking)
+- `prism_rate_limit_total` (allowed vs throttled outcomes)
+- `prism_provider_requests_total` (provider success/failure by provider name)
+- `prism_token_estimated_input_total` and `prism_token_estimated_output_total`
+- `prism_uptime_seconds`
+
+Token accounting behavior:
+
+- Uses provider-reported usage when available (`completion_tokens`).
+- Falls back to a lightweight estimator for input/output tokens.
+- Values are meant for trend observability and capacity planning, not billing precision.
+
+Logging is structured with pino and sensitive headers are redacted (`authorization`, `x-api-key`, `x-admin-secret`).
+
 ## Frontend (React + Vite)
 
 A modern graphite/platinum frontend is available in `frontend/`.

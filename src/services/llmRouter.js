@@ -1,6 +1,8 @@
 'use strict';
 
 const crypto = require('node:crypto');
+const { recordProvider, recordInputTokens, recordOutputTokens } = require('../observability/metrics');
+const { estimateInputTokens, estimateOutputTokens } = require('../observability/tokenEstimator');
 
 function nowUnixSeconds() {
   return Math.floor(Date.now() / 1000);
@@ -284,9 +286,11 @@ function createLlmRouter(options = {}) {
       try {
         const upstream = await provider.createChatCompletion(body, { log });
         const normalized = coerceOpenAIChatCompletion(upstream, body.model);
+        recordProvider(provider.name, 'success');
         log?.info?.({ provider: provider.name }, 'LLM provider succeeded');
         return normalized;
       } catch (err) {
+        recordProvider(provider.name, 'failure');
         errors.push({ provider: provider.name, err });
         log?.warn?.({ provider: provider.name, status: err?.status, err }, 'LLM provider failed (trying next)');
       }
@@ -315,6 +319,11 @@ function createLlmRouter(options = {}) {
   async function createChatCompletion(params = {}, ctx = {}) {
     const body = pickBodyFields(params);
     const { cache, log } = ctx || {};
+    const modelLabel = typeof body.model === 'string' && body.model.trim() ? body.model.trim() : 'unknown';
+    const estimatedInputTokens = Number.isInteger(params?.usage?.prompt_tokens)
+      ? params.usage.prompt_tokens
+      : estimateInputTokens(body.messages);
+    recordInputTokens(modelLabel, estimatedInputTokens);
 
     const stream = body.stream === true;
 
@@ -324,6 +333,8 @@ function createLlmRouter(options = {}) {
       try {
         const cached = await cache.get(key);
         if (cached) {
+          const cachedOutputTokens = estimateOutputTokens(cached);
+          recordOutputTokens(modelLabel, cachedOutputTokens);
           log?.debug?.({ cache: 'HIT' }, 'AI cache hit');
           return { result: cached, cacheStatus: 'HIT' };
         }
@@ -332,6 +343,8 @@ function createLlmRouter(options = {}) {
       }
 
       const result = await tryProviders(body, { log });
+      const outputTokens = estimateOutputTokens(result);
+      recordOutputTokens(modelLabel, outputTokens);
 
       try {
         await cache.set(key, result);
@@ -343,6 +356,8 @@ function createLlmRouter(options = {}) {
     }
 
     const result = await tryProviders(body, { log });
+    const outputTokens = estimateOutputTokens(result);
+    recordOutputTokens(modelLabel, outputTokens);
     return { result, cacheStatus: 'BYPASS' };
   }
 
