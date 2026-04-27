@@ -5,6 +5,7 @@ const express = require('express');
 const { createChatCompletion } = require('../services/ai.service');
 const { promptSafety } = require('../middleware/promptSafety');
 const { createAiCache } = require('../middleware/aiCache');
+const { recordCache } = require('../observability/metrics');
 
 const router = express.Router();
 
@@ -77,6 +78,7 @@ router.post('/chat/completions', promptSafety, async (req, res, next) => {
       log: req.log,
     });
 
+    recordCache(cacheStatus);
     res.set('X-Cache', cacheStatus);
     return res.status(200).json(result);
   } catch (err) {

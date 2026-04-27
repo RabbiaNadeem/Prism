@@ -3,6 +3,7 @@
 const crypto = require('node:crypto');
 
 const { Redis } = require('@upstash/redis');
+const { recordRateLimit } = require('../observability/metrics');
 
 function parsePositiveInt(value, fallback) {
   const parsed = Number.parseInt(value, 10);
@@ -85,11 +86,13 @@ function createRateLimiter(options = {}) {
 
       if (retryAfterMs > 0) {
         res.set('Retry-After', String(Math.max(1, Math.ceil(retryAfterMs / 1000))));
+        recordRateLimit('throttled');
         const err = new Error('Rate limit exceeded');
         err.statusCode = 429;
         throw err;
       }
 
+      recordRateLimit('allowed');
       return next();
     } catch (err) {
       return next(err);
