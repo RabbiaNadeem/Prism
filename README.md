@@ -94,6 +94,10 @@ Use one of the following to allow client calls into Prism:
 - `AI_CACHE_PREFIX` (default: `prism:chatcache`)
 - `PROMPT_SAFETY_ENABLED` (`true`/`false`, default: `true`)
 
+### Debugging upstream failures (optional)
+
+- `PRISM_EXPOSE_UPSTREAM_ERRORS` — when set to `true`, include sanitized `details` (per-provider HTTP status, requested model) on "all providers failed" responses even if `NODE_ENV=production`. Without it, `details` are only added when `NODE_ENV` is not `production`.
+
 ## Local Development
 
 Install and run:
@@ -146,6 +150,25 @@ Build and run:
 docker build -t prism .
 docker run --rm -p 3000:3000 --env-file .env prism
 ```
+
+## Troubleshooting: "All LLM providers failed"
+
+That error means Prism reached your app, but **every** configured upstream (Groq, then Gemini, then OpenRouter) returned an error. Check the following.
+
+1. **Confirm the browser points at Prism**  
+   The frontend uses `VITE_API_BASE_URL` (default `http://localhost:3000`). Only one process can bind to a port. For example, if `php -S localhost:3000` is running, Node/Prism cannot use `3000`; stop the other server or run Prism on another port and set `VITE_API_BASE_URL` accordingly.  
+   Quick check: open `GET http://localhost:3000/health` — Prism returns `{"ok":true}`.
+
+2. **Confirm provider keys load in the same process as Prism**  
+   `GROQ_API_KEY` / `GEMINI_API_KEY` must exist in the environment of the **Node** server. For Docker: use `--env-file .env` or `-e` and recreate the container after changing `.env`. For `npm start`, use a project `.env` loaded at startup.
+
+3. **Read logs**  
+   Structured logs include `LLM provider failed (trying next)` with `provider` and `status` when an upstream returns a non-2xx status or times out.
+
+4. **Failover uses one `model` for every provider**  
+   Providers run in order until one succeeds. Each attempt uses the **same** `model` from the client. A Groq-specific id (e.g. `llama-3.1-8b-instant`) may be invalid for Gemini if Groq fails and Prism falls through—use a model id valid for the provider you expect to answer, or adjust keys so the right provider is tried first.
+
+**Dev-only JSON details:** When `NODE_ENV` is not `production`, error responses for upstream exhaustion can include `details` (`attempts`, `modelRequested`, `hint`). In production, set `PRISM_EXPOSE_UPSTREAM_ERRORS=true` to include the same structured `details` field (no API key material).
 
 ## Notes
 

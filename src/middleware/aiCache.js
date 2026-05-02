@@ -31,10 +31,11 @@ function normalizeMessages(messages) {
     .filter(Boolean);
 }
 
-function buildChatCacheKey({ model, messages, prefix } = {}) {
+function buildChatCacheKey({ model, messages, provider, prefix } = {}) {
   const safeModel = typeof model === 'string' && model.trim() ? model.trim() : '';
+  const safeProvider = typeof provider === 'string' && provider.trim() ? provider.trim().toLowerCase() : '';
   const safePrefix = typeof prefix === 'string' && prefix.trim() ? prefix.trim() : 'prism:chatcache';
-  const prompt = JSON.stringify({ model: safeModel, messages: normalizeMessages(messages) });
+  const prompt = JSON.stringify({ provider: safeProvider, model: safeModel, messages: normalizeMessages(messages) });
   return `${safePrefix}:${sha256Hex(prompt)}`;
 }
 
@@ -53,7 +54,7 @@ function createAiCache(options = {}) {
     ttlSeconds,
     prefix,
     redis,
-    chatKey: ({ model, messages }) => buildChatCacheKey({ model, messages, prefix }),
+    chatKey: ({ model, messages, provider }) => buildChatCacheKey({ model, messages, provider, prefix }),
     async get(key) {
       if (!enabled || !redis) return null;
       return redis.get(key);

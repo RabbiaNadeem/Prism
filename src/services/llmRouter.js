@@ -271,13 +271,24 @@ function createLlmRouter(options = {}) {
     };
   }
 
-  async function tryProviders(body, { log } = {}) {
-    const configured = providers.filter((p) => p && typeof p.isConfigured === 'function' && p.isConfigured());
+  async function tryProviders(body, { log, providerHint } = {}) {
+    let configured = providers.filter((p) => p && typeof p.isConfigured === 'function' && p.isConfigured());
 
     if (configured.length === 0) {
       const err = new Error('No LLM providers configured (missing API keys/base URLs)');
       err.statusCode = 500;
       throw err;
+    }
+
+    if (typeof providerHint === 'string' && providerHint.trim()) {
+      const hint = providerHint.trim().toLowerCase();
+      const restricted = configured.filter((p) => p.name === hint);
+      if (restricted.length === 0) {
+        const err = new Error(`Provider not configured: ${hint}`);
+        err.statusCode = 400;
+        throw err;
+      }
+      configured = restricted;
     }
 
     const errors = [];
@@ -306,6 +317,17 @@ function createLlmRouter(options = {}) {
     const err = new Error('All LLM providers failed');
     err.statusCode = last?.err?.status || 502;
     err.cause = last?.err;
+    err.exposeUpstreamFailure = true;
+    err.details = {
+      attempts: errors.map(({ provider, err: e }) => ({
+        provider,
+        httpStatus: Number.isInteger(e?.status) ? e.status : null,
+        code: typeof e?.code === 'string' ? e.code : undefined,
+      })),
+      modelRequested: typeof body?.model === 'string' ? body.model : undefined,
+      hint:
+        'Each provider receives the same `model`; use IDs valid for Groq/Gemini, or temporarily unset upstream keys you are not testing.',
+    };
     throw err;
   }
 
@@ -318,6 +340,7 @@ function createLlmRouter(options = {}) {
    */
   async function createChatCompletion(params = {}, ctx = {}) {
     const body = pickBodyFields(params);
+    const providerHint = typeof params?.provider === 'string' ? params.provider.trim() : '';
     const { cache, log } = ctx || {};
     const modelLabel = typeof body.model === 'string' && body.model.trim() ? body.model.trim() : 'unknown';
     const estimatedInputTokens = Number.isInteger(params?.usage?.prompt_tokens)
@@ -328,7 +351,7 @@ function createLlmRouter(options = {}) {
     const stream = body.stream === true;
 
     if (cache?.enabled && !stream) {
-      const key = cache.chatKey({ model: body.model, messages: body.messages });
+      const key = cache.chatKey({ model: body.model, messages: body.messages, provider: providerHint || undefined });
 
       try {
         const cached = await cache.get(key);
@@ -342,7 +365,7 @@ function createLlmRouter(options = {}) {
         log?.warn?.({ err }, 'AI cache read failed (bypassing)');
       }
 
-      const result = await tryProviders(body, { log });
+      const result = await tryProviders(body, { log, providerHint });
       const outputTokens = estimateOutputTokens(result);
       recordOutputTokens(modelLabel, outputTokens);
 
@@ -355,7 +378,7 @@ function createLlmRouter(options = {}) {
       return { result, cacheStatus: 'MISS' };
     }
 
-    const result = await tryProviders(body, { log });
+    const result = await tryProviders(body, { log, providerHint });
     const outputTokens = estimateOutputTokens(result);
     recordOutputTokens(modelLabel, outputTokens);
     return { result, cacheStatus: 'BYPASS' };

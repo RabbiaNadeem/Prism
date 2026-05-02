@@ -1,0 +1,41 @@
+# Dependencies (reinstalled in image)
+node_modules
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Secrets and local env
+.env
+.env.*
+!.env.example
+
+# VCS and editor
+.git
+.gitattributes
+.github
+.cursor
+.vscode
+.idea
+
+# Frontend is a separate app; not part of the API image
+frontend
+
+# Docs and samples (shrink build context)
+*.md
+body.json
+
+# Tests and coverage (when present)
+coverage
+.nyc_output
+**/__tests__
+**/*.test.js
+**/*.spec.js
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Optional compose / local tooling (not copied into image)
+docker-compose*.yml
+docker-compose*.yaml
+.docker
