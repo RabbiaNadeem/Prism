@@ -57,6 +57,16 @@ const aiCache = createAiCache();
  *       400:
  *         description: Invalid request
  */
+const SYSTEM_PROMPT = {
+  role: 'system',
+  content:
+    'You are a helpful assistant. Always format your responses using proper Markdown:\n' +
+    '- Start every new heading or numbered point on its own line.\n' +
+    '- Use **bold** for headings and key terms.\n' +
+    '- Separate each section with a blank line for readability.\n' +
+    '- Never write long walls of text; break content into clear, concise paragraphs or lists.',
+};
+
 router.post('/chat/completions', promptSafety, async (req, res, next) => {
   try {
     const { messages, stream } = req.body || {};
@@ -73,10 +83,14 @@ router.post('/chat/completions', promptSafety, async (req, res, next) => {
       throw err;
     }
 
-    const { result, cacheStatus } = await createChatCompletion(req.body, {
-      cache: aiCache,
-      log: req.log,
-    });
+    // Inject system prompt if none already provided by the caller.
+    const hasSystemPrompt = messages.some((m) => m.role === 'system');
+    const enrichedMessages = hasSystemPrompt ? messages : [SYSTEM_PROMPT, ...messages];
+
+    const { result, cacheStatus } = await createChatCompletion(
+      { ...req.body, messages: enrichedMessages },
+      { cache: aiCache, log: req.log },
+    );
 
     recordCache(cacheStatus);
     res.set('X-Cache', cacheStatus);

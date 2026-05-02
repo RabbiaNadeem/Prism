@@ -7,22 +7,46 @@ function buildHeaders(apiKey) {
   };
 }
 
-function parseErrorMessage(status, payload) {
-  if (status === 401) return 'Unauthorized. Check your Prism API key.';
-  if (status === 429) return 'Rate limit reached. Wait and try again.';
-  if (status === 400) return payload?.error || 'Request blocked by validation or prompt safety.';
-  return payload?.error || 'Request failed. Please try again.';
+function formatUpstreamDetails(details) {
+  if (!details || typeof details !== 'object') return '';
+  const attempts = Array.isArray(details.attempts)
+    ? details.attempts
+        .map((a) => `${a.provider ?? '?'}:${a.httpStatus != null ? a.httpStatus : (a.code ?? '?')}`)
+        .join(', ')
+    : '';
+  const parts = [attempts ? `upstream: ${attempts}` : '', details.modelRequested ? `model: ${details.modelRequested}` : '', typeof details.hint === 'string' ? details.hint : ''].filter(
+    Boolean,
+  );
+  return parts.length ? `\n${parts.join(' — ')}` : '';
 }
 
-export async function createChatCompletion({ apiKey, model, messages }) {
+function parseErrorMessage(status, payload) {
+  const base =
+    status === 401
+      ? 'Unauthorized. Check your Prism API key.'
+      : status === 429
+        ? 'Rate limit reached. Wait and try again.'
+        : status === 400
+          ? payload?.error || 'Request blocked by validation or prompt safety.'
+          : payload?.error || 'Request failed. Please try again.';
+  if (payload?.details && status !== 401) return base + formatUpstreamDetails(payload.details);
+  return base;
+}
+
+export async function createChatCompletion({ apiKey, provider, model, messages }) {
+  const body = {
+    model: model || 'gpt-4.1-mini',
+    messages,
+    stream: false,
+  };
+  if (typeof provider === 'string' && provider.trim()) {
+    body.provider = provider.trim();
+  }
+
   const response = await fetch(`${API_BASE_URL}/v1/chat/completions`, {
     method: 'POST',
     headers: buildHeaders(apiKey),
-    body: JSON.stringify({
-      model: model || 'gpt-4.1-mini',
-      messages,
-      stream: false,
-    }),
+    body: JSON.stringify(body),
   });
 
   const data = await response.json().catch(() => ({}));
@@ -37,6 +61,7 @@ export async function createChatCompletion({ apiKey, model, messages }) {
     const error = new Error(parseErrorMessage(response.status, data));
     error.status = response.status;
     error.meta = meta;
+    if (data?.details) error.details = data.details;
     throw error;
   }
 
