@@ -1,10 +1,8 @@
 import { useDeferredScrollSpy } from '../../lib/perf';
 
 const LINKS = [
-  { href: '#overview', label: 'Overview' },
   { href: '#playground', label: 'Playground' },
   { href: '#capabilities', label: 'Capabilities' },
-  { href: '#performance', label: 'Performance' },
 ];
 
 export function NavBar() {
@@ -13,7 +11,7 @@ export function NavBar() {
   return (
     <header className="top-nav-wrap">
       <div className="top-nav">
-        <a className="brand" href="#overview">
+        <a className="brand" href="#playground">
           <span className="brand-dot" />
           Prism
         </a>

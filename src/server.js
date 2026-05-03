@@ -58,7 +58,12 @@ function createApp() {
   );
   app.use(requestMetrics);
   app.use(helmet());
-  app.use(cors());
+  app.use(
+    cors({
+      // Allow browser JS to read these on cross-origin responses (e.g. Vite dev → API).
+      exposedHeaders: ['X-Cache', 'X-RateLimit-Limit', 'X-RateLimit-Remaining', 'Retry-After'],
+    }),
+  );
 
   // API documentation
   app.get('/openapi.json', (req, res) => {
