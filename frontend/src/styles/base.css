@@ -26,7 +26,7 @@ a {
 }
 
 main {
-  width: min(var(--max-width), 92vw);
+  width: min(var(--max-width), calc(100vw - 2 * var(--page-gutter)));
   margin: 2.5rem auto 3rem;
   display: grid;
   gap: 1rem;

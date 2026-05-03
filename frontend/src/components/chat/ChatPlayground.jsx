@@ -1,18 +1,58 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { createChatCompletion } from '../../lib/apiClient';
+import { fetchModelCatalog } from '../../lib/modelCatalog';
 import { MessageList } from './MessageList';
 
 export function ChatPlayground() {
   const [apiKey, setApiKey] = useState('');
-  const [model, setModel] = useState('gpt-4.1-mini');
+  const [providers, setProviders] = useState([]);
+  const [providerId, setProviderId] = useState('');
+  const [modelId, setModelId] = useState('');
+  const [catalogError, setCatalogError] = useState('');
   const [prompt, setPrompt] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [meta, setMeta] = useState(null);
   const [messages, setMessages] = useState([]);
 
-  const canSubmit = apiKey.trim() && prompt.trim() && !isLoading;
+  useEffect(() => {
+    let cancelled = false;
+    fetchModelCatalog()
+      .then((list) => {
+        if (cancelled) return;
+        setProviders(list);
+        const firstProvider = list[0];
+        if (firstProvider) {
+          setProviderId(firstProvider.id);
+          setModelId(firstProvider.models?.[0]?.id || '');
+        }
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setCatalogError(err?.message || 'Failed to load model catalog');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const selectedProvider = useMemo(
+    () => providers.find((p) => p.id === providerId) || null,
+    [providers, providerId],
+  );
+
+  const modelOptions = selectedProvider?.models || [];
+
+  const hasCatalog = providers.length > 0 && !!providerId && !!modelId;
+  const canSubmit = apiKey.trim() && prompt.trim() && hasCatalog && !isLoading;
   const messageList = useMemo(() => messages, [messages]);
+
+  function handleProviderChange(event) {
+    const next = event.target.value;
+    setProviderId(next);
+    const provider = providers.find((p) => p.id === next);
+    setModelId(provider?.models?.[0]?.id || '');
+  }
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -32,7 +72,8 @@ export function ChatPlayground() {
     try {
       const response = await createChatCompletion({
         apiKey: apiKey.trim(),
-        model: model.trim(),
+        provider: providerId,
+        model: modelId,
         messages: [{ role: 'user', content: userMessage.content }],
       });
 
@@ -52,61 +93,106 @@ export function ChatPlayground() {
   }
 
   return (
-    <section id="playground" className="panel">
+    <section id="playground" className="panel playground-panel">
       <div className="section-heading">
         <p className="eyebrow">Playground</p>
         <h2>Test Prism chat completions instantly</h2>
       </div>
 
-      <form className="chat-form" onSubmit={handleSubmit}>
-        <label>
-          Prism API Key
-          <input
-            type="password"
-            value={apiKey}
-            onChange={(event) => setApiKey(event.target.value)}
-            placeholder="Paste allowed key"
-            autoComplete="off"
-            required
-          />
-        </label>
-        <label>
-          Model
-          <input
-            type="text"
-            value={model}
-            onChange={(event) => setModel(event.target.value)}
-            placeholder="gpt-4.1-mini"
-          />
-        </label>
-        <label>
-          Prompt
-          <textarea
-            value={prompt}
-            onChange={(event) => setPrompt(event.target.value)}
-            rows={4}
-            placeholder="Ask Prism something..."
-            required
-          />
-        </label>
-        <button className="btn btn-primary" type="submit" disabled={!canSubmit}>
-          {isLoading ? 'Sending...' : 'Send Request'}
-        </button>
-      </form>
+      <div className="playground-split">
+        <div className="playground-controls">
+          <form className="chat-form" onSubmit={handleSubmit}>
+            <label>
+              Prism API Key
+              <input
+                type="password"
+                value={apiKey}
+                onChange={(event) => setApiKey(event.target.value)}
+                placeholder="Paste allowed key"
+                autoComplete="off"
+                required
+              />
+            </label>
+            <label>
+              Provider
+              <select
+                value={providerId}
+                onChange={handleProviderChange}
+                disabled={providers.length === 0}
+              >
+                {providers.length === 0 ? (
+                  <option value="">No providers configured</option>
+                ) : (
+                  providers.map((provider) => (
+                    <option key={provider.id} value={provider.id}>
+                      {provider.label}
+                    </option>
+                  ))
+                )}
+              </select>
+            </label>
+            <label>
+              Model
+              <select
+                value={modelId}
+                onChange={(event) => setModelId(event.target.value)}
+                disabled={modelOptions.length === 0}
+              >
+                {modelOptions.length === 0 ? (
+                  <option value="">No models available</option>
+                ) : (
+                  modelOptions.map((model) => (
+                    <option key={model.id} value={model.id}>
+                      {model.label}
+                    </option>
+                  ))
+                )}
+              </select>
+            </label>
+            <label>
+              Prompt
+              <textarea
+                value={prompt}
+                onChange={(event) => setPrompt(event.target.value)}
+                rows={4}
+                placeholder="Ask Prism something..."
+                required
+              />
+            </label>
+            <button className="btn btn-primary" type="submit" disabled={!canSubmit}>
+              {isLoading ? 'Sending...' : 'Send Request'}
+            </button>
+          </form>
 
-      {error ? <p className="status error">{error}</p> : null}
+          {catalogError ? (
+            <p className="status error">
+              {catalogError} (set provider keys in your Prism `.env`, then restart the server)
+            </p>
+          ) : null}
 
-      {meta ? (
-        <div className="meta-bar" role="status">
-          <span>Cache: {meta.cacheStatus || 'n/a'}</span>
-          <span>
-            Rate: {meta.rateLimitRemaining || 'n/a'}/{meta.rateLimitLimit || 'n/a'}
-          </span>
-          <span>Retry-After: {meta.retryAfter || 'n/a'}</span>
+          {error ? <p className="status error">{error}</p> : null}
+
+          {meta ? (
+            <div className="meta-bar" role="status">
+              <span>Cache: {meta.cacheStatus ?? 'n/a'}</span>
+              <span>
+                Rate: {meta.rateLimitRemaining ?? 'n/a'}/{meta.rateLimitLimit ?? 'n/a'}
+              </span>
+              {meta.retryAfter ? <span>Retry-After: {meta.retryAfter}s</span> : null}
+            </div>
+          ) : null}
         </div>
-      ) : null}
 
-      <MessageList messages={messageList} />
+        <aside className="playground-conversation" aria-label="User and assistant messages">
+          <p className="eyebrow">Conversation</p>
+          <p className="conversation-hint">Your prompts and assistant replies appear here.</p>
+          {messages.length === 0 ? (
+            <p className="conversation-empty">No messages yet.</p>
+          ) : (
+            <MessageList messages={messageList} />
+          )}
+        </aside>
+      </div>
     </section>
   );
 }

@@ -13,5 +13,6 @@
   --shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
   --radius-lg: 20px;
   --radius-md: 12px;
-  --max-width: 1100px;
+  --max-width: 1680px;
+  --page-gutter: clamp(0.75rem, 2vw, 1.25rem);
 }

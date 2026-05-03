@@ -12,7 +12,7 @@
 }
 
 .top-nav {
-  width: min(var(--max-width), 92vw);
+  width: min(var(--max-width), calc(100vw - 2 * var(--page-gutter)));
   margin: 0 auto;
   min-height: 4rem;
   display: flex;
@@ -60,34 +60,11 @@
   padding: 1.5rem;
 }
 
-.hero {
-  padding: 2.2rem;
-}
-
 .eyebrow {
   font-size: 0.76rem;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--accent);
-}
-
-.hero h1 {
-  margin-top: 0.8rem;
-  line-height: 1.1;
-  font-size: clamp(1.8rem, 5vw, 3rem);
-  max-width: 18ch;
-}
-
-.lead {
-  margin-top: 0.9rem;
-  max-width: 60ch;
-  color: var(--muted);
-}
-
-.hero-actions {
-  display: flex;
-  gap: 0.8rem;
-  margin-top: 1.25rem;
 }
 
 .btn {
@@ -108,16 +85,60 @@
   background: linear-gradient(135deg, var(--platinum-strong), var(--platinum));
 }
 
-.btn-ghost {
-  background: transparent;
-  color: var(--platinum-strong);
-  border-color: var(--border);
-}
-
 .section-heading {
   display: grid;
   gap: 0.45rem;
   margin-bottom: 1rem;
+}
+
+.playground-panel .section-heading {
+  margin-bottom: 1.25rem;
+}
+
+.playground-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.playground-controls {
+  display: grid;
+  gap: 0;
+  min-width: 0;
+}
+
+.playground-conversation {
+  display: flex;
+  flex-direction: column;
+  min-height: 16rem;
+  max-height: min(70vh, 36rem);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 1rem 1rem 0.85rem;
+  background: #0d1118;
+  min-width: 0;
+}
+
+.playground-conversation .conversation-hint {
+  margin-top: 0.35rem;
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+
+.playground-conversation .conversation-empty {
+  margin-top: 1rem;
+  padding: 1rem 0.5rem;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.playground-conversation .message-list {
+  margin-top: 0.65rem;
+  overflow-y: auto;
+  flex: 1;
+  padding-right: 0.25rem;
 }
 
 .chat-form {
@@ -202,28 +223,6 @@
   color: var(--muted);
 }
 
-.perf-strip {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 0.75rem;
-}
-
-.perf-strip div {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 0.8rem;
-}
-
-.perf-strip p {
-  color: var(--muted);
-  font-size: 0.85rem;
-}
-
-.perf-strip strong {
-  margin-top: 0.3rem;
-  display: inline-block;
-}
-
 .section-skeleton {
   height: 90px;
   border-radius: var(--radius-lg);
@@ -231,8 +230,12 @@
   background: linear-gradient(110deg, #10151d 30%, #1a222d 48%, #10151d 64%);
 }
 
-@media (max-width: 800px) {
-  .hero {
-    padding: 1.5rem;
+@media (max-width: 900px) {
+  .playground-split {
+    grid-template-columns: 1fr;
+  }
+
+  .playground-conversation {
+    max-height: none;
   }
 }

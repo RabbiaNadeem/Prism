@@ -18,6 +18,7 @@ const { auth } = require('./middleware/auth');
 const { createRateLimiter } = require('./middleware/rateLimiter');
 const { requestMetrics } = require('./middleware/requestMetrics');
 const { register } = require('./observability/metrics');
+const { getAvailableProviders } = require('./services/modelCatalog');
 
 const PORT = Number.parseInt(process.env.PORT, 10) || 3000;
 const appLogger = pino({
@@ -57,7 +58,12 @@ function createApp() {
   );
   app.use(requestMetrics);
   app.use(helmet());
-  app.use(cors());
+  app.use(
+    cors({
+      // Allow browser JS to read these on cross-origin responses (e.g. Vite dev → API).
+      exposedHeaders: ['X-Cache', 'X-RateLimit-Limit', 'X-RateLimit-Remaining', 'Retry-After'],
+    }),
+  );
 
   // API documentation
   app.get('/openapi.json', (req, res) => {
@@ -92,6 +98,22 @@ function createApp() {
 
   app.get('/', (req, res) => {
     res.status(200).send('Prism server running');
+  });
+
+  /**
+   * @openapi
+   * /providers/models:
+   *   get:
+   *     tags:
+   *       - System
+   *     summary: List configured providers and their models
+   *     description: Returns provider/model metadata only for providers whose API keys are configured. Public; no secrets are exposed.
+   *     responses:
+   *       200:
+   *         description: Provider catalog
+   */
+  app.get('/providers/models', (req, res) => {
+    res.status(200).json({ providers: getAvailableProviders(process.env) });
   });
 
   // API routes (protected)
