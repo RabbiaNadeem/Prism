@@ -1,0 +1,32 @@
+# Run API + UI together: docker compose up --build
+#
+# UI: http://localhost:8080  ·  API: http://localhost:3000
+#
+# API keys: keep a `.env` next to this file (see `.env.example`). Compose passes it into the `api` service.
+# Other hosts / HTTPS: rebuild frontend with --build-arg VITE_API_BASE_URL=https://your-api-host
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: "3000"
+      NODE_ENV: production
+    # Runtime secrets (not in the image); copy from .env.example if needed.
+    env_file:
+      - .env
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # Browser calls this URL (must match published api port on your machine).
+        VITE_API_BASE_URL: http://localhost:3000
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
