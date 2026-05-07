@@ -3,11 +3,27 @@ import { createChatCompletion } from '../../lib/apiClient';
 import { fetchModelCatalog } from '../../lib/modelCatalog';
 import { MessageList } from './MessageList';
 
+const PRISM_API_KEY_STORAGE_KEY = 'prism:adminApiKey';
+
+function buildServedByLabel(providerRaw, modelRaw, catalog) {
+  if (!providerRaw && !modelRaw) return '';
+
+  const id =
+    typeof providerRaw === 'string' ? providerRaw.trim().toLowerCase().split('-')[0] : '';
+  const providerLabel =
+    catalog.find((p) => p.id === id)?.label ||
+    (id ? id[0].toUpperCase() + id.slice(1) : providerRaw || 'Unknown');
+
+  const modelLabel =
+    catalog.flatMap((p) => p.models || []).find((m) => m.id === modelRaw)?.label ||
+    (typeof modelRaw === 'string' && modelRaw.trim() ? modelRaw : 'auto');
+
+  return `${providerLabel} - ${modelLabel}`;
+}
+
 export function ChatPlayground() {
   const [apiKey, setApiKey] = useState('');
   const [providers, setProviders] = useState([]);
-  const [providerId, setProviderId] = useState('');
-  const [modelId, setModelId] = useState('');
   const [catalogError, setCatalogError] = useState('');
   const [prompt, setPrompt] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -16,16 +32,29 @@ export function ChatPlayground() {
   const [messages, setMessages] = useState([]);
 
   useEffect(() => {
+    try {
+      const saved = localStorage.getItem(PRISM_API_KEY_STORAGE_KEY);
+      if (typeof saved === 'string' && saved.trim()) setApiKey(saved);
+    } catch {
+      // Ignore storage errors (private mode / blocked storage).
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      if (apiKey.trim()) localStorage.setItem(PRISM_API_KEY_STORAGE_KEY, apiKey);
+      else localStorage.removeItem(PRISM_API_KEY_STORAGE_KEY);
+    } catch {
+      // Ignore storage errors (private mode / blocked storage).
+    }
+  }, [apiKey]);
+
+  useEffect(() => {
     let cancelled = false;
     fetchModelCatalog()
       .then((list) => {
         if (cancelled) return;
         setProviders(list);
-        const firstProvider = list[0];
-        if (firstProvider) {
-          setProviderId(firstProvider.id);
-          setModelId(firstProvider.models?.[0]?.id || '');
-        }
       })
       .catch((err) => {
         if (cancelled) return;
@@ -36,23 +65,14 @@ export function ChatPlayground() {
     };
   }, []);
 
-  const selectedProvider = useMemo(
-    () => providers.find((p) => p.id === providerId) || null,
-    [providers, providerId],
-  );
-
-  const modelOptions = selectedProvider?.models || [];
-
-  const hasCatalog = providers.length > 0 && !!providerId && !!modelId;
+  const hasCatalog = providers.length > 0;
   const canSubmit = apiKey.trim() && prompt.trim() && hasCatalog && !isLoading;
   const messageList = useMemo(() => messages, [messages]);
 
-  function handleProviderChange(event) {
-    const next = event.target.value;
-    setProviderId(next);
-    const provider = providers.find((p) => p.id === next);
-    setModelId(provider?.models?.[0]?.id || '');
-  }
+  const servedByLabel = useMemo(
+    () => buildServedByLabel(meta?.providerUsed, meta?.modelUsed, providers),
+    [meta?.providerUsed, meta?.modelUsed, providers],
+  );
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -72,15 +92,23 @@ export function ChatPlayground() {
     try {
       const response = await createChatCompletion({
         apiKey: apiKey.trim(),
-        provider: providerId,
-        model: modelId,
         messages: [{ role: 'user', content: userMessage.content }],
       });
 
       const assistant = response?.data?.choices?.[0]?.message?.content || 'No response content returned.';
+      const servedBy = buildServedByLabel(
+        response.meta?.providerUsed,
+        response.meta?.modelUsed,
+        providers,
+      );
       setMessages((prev) => [
         ...prev,
-        { id: crypto.randomUUID(), role: 'assistant', content: assistant },
+        {
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          content: assistant,
+          ...(servedBy ? { servedBy } : {}),
+        },
       ]);
       setMeta(response.meta);
       setPrompt('');
@@ -90,6 +118,10 @@ export function ChatPlayground() {
     } finally {
       setIsLoading(false);
     }
+  }
+
+  function handleClearApiKey() {
+    setApiKey('');
   }
 
   return (
@@ -108,47 +140,16 @@ export function ChatPlayground() {
                 type="password"
                 value={apiKey}
                 onChange={(event) => setApiKey(event.target.value)}
-                placeholder="Paste allowed key"
+                placeholder="Paste once — saved in this browser"
                 autoComplete="off"
                 required
               />
             </label>
-            <label>
-              Provider
-              <select
-                value={providerId}
-                onChange={handleProviderChange}
-                disabled={providers.length === 0}
-              >
-                {providers.length === 0 ? (
-                  <option value="">No providers configured</option>
-                ) : (
-                  providers.map((provider) => (
-                    <option key={provider.id} value={provider.id}>
-                      {provider.label}
-                    </option>
-                  ))
-                )}
-              </select>
-            </label>
-            <label>
-              Model
-              <select
-                value={modelId}
-                onChange={(event) => setModelId(event.target.value)}
-                disabled={modelOptions.length === 0}
-              >
-                {modelOptions.length === 0 ? (
-                  <option value="">No models available</option>
-                ) : (
-                  modelOptions.map((model) => (
-                    <option key={model.id} value={model.id}>
-                      {model.label}
-                    </option>
-                  ))
-                )}
-              </select>
-            </label>
+            <div className="row-actions">
+              <button className="btn btn-secondary" type="button" onClick={handleClearApiKey} disabled={!apiKey.trim()}>
+                Clear saved key
+              </button>
+            </div>
             <label>
               Prompt
               <textarea
@@ -179,6 +180,7 @@ export function ChatPlayground() {
                 Rate: {meta.rateLimitRemaining ?? 'n/a'}/{meta.rateLimitLimit ?? 'n/a'}
               </span>
               {meta.retryAfter ? <span>Retry-After: {meta.retryAfter}s</span> : null}
+              {servedByLabel ? <span>Served by: {servedByLabel}</span> : null}
             </div>
           ) : null}
         </div>

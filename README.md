@@ -1,7 +1,7 @@
 # Prism
 
 Prism is an OpenAI-compatible AI API gateway built with Node.js and Express.  
-It routes chat completion requests across multiple providers (Groq, Gemini, OpenRouter), adds API-key auth, rate limiting, optional response caching, and prompt safety checks.
+It routes chat completion requests across multiple providers (Groq, Gemini), adds API-key auth, rate limiting, optional response caching, and prompt safety checks.
 
 ## What It Does
 
@@ -44,7 +44,7 @@ src/
 - Node.js 20+ (recommended)
 - npm
 - Upstash Redis credentials (required for rate limiting)
-- At least one provider API key (Groq, Gemini, or OpenRouter)
+- At least one provider API key (Groq or Gemini)
 
 ## Environment Variables
 
@@ -72,17 +72,14 @@ Use one of the following to allow client calls into Prism:
 
 ### AI Providers (configure at least one)
 
-- `GROQ_API_KEY`
+- `GROQ_API_KEY` (single key or comma/newline separated)
+- `GROQ_API_KEYS` (explicit allow-list; comma/newline separated)
 - `GROQ_BASE_URL` (default: `https://api.groq.com/openai/v1`)
 
-- `GEMINI_API_KEY`
+- `GEMINI_API_KEY` (single key or comma/newline separated)
+- `GEMINI_API_KEYS` (explicit allow-list; comma/newline separated)
 - `GEMINI_BASE_URL` (default: `https://generativelanguage.googleapis.com/v1beta/openai`)
 - `GEMINI_AUTH_MODE` (default: `x-goog-api-key`; also supports `bearer` and `api-key`)
-
-- `OPENROUTER_API_KEY`
-- `OPENROUTER_BASE_URL` (default: `https://openrouter.ai/api/v1`)
-- `OPENROUTER_HTTP_REFERER` (optional)
-- `OPENROUTER_X_TITLE` (optional)
 
 - `LLM_PROVIDER_TIMEOUT_MS` (default: `15000`)
 - `PRISM_ECHO_FALLBACK` (`true`/`false`, default: `false`)
@@ -153,7 +150,7 @@ docker run --rm -p 3000:3000 --env-file .env prism
 
 ## Troubleshooting: "All LLM providers failed"
 
-That error means Prism reached your app, but **every** configured upstream (Groq, then Gemini, then OpenRouter) returned an error. Check the following.
+That error means Prism reached your app, but **every** configured upstream returned an error. Check the following.
 
 1. **Confirm the browser points at Prism**  
    The frontend uses `VITE_API_BASE_URL` (default `http://localhost:3000`). Only one process can bind to a port. For example, if `php -S localhost:3000` is running, Node/Prism cannot use `3000`; stop the other server or run Prism on another port and set `VITE_API_BASE_URL` accordingly.  

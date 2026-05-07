@@ -46,6 +46,9 @@ function MessageListBase({ messages }) {
         <article key={message.id} className={`message ${message.role}`}>
           <p className="message-role">{message.role}</p>
           <div className="message-content">{renderMarkdown(message.content)}</div>
+          {message.role === 'assistant' && message.servedBy ? (
+            <p className="message-served-by">{message.servedBy}</p>
+          ) : null}
         </article>
       ))}
     </div>

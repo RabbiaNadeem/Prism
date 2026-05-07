@@ -87,13 +87,15 @@ router.post('/chat/completions', promptSafety, async (req, res, next) => {
     const hasSystemPrompt = messages.some((m) => m.role === 'system');
     const enrichedMessages = hasSystemPrompt ? messages : [SYSTEM_PROMPT, ...messages];
 
-    const { result, cacheStatus } = await createChatCompletion(
+    const { result, cacheStatus, providerUsed, modelUsed } = await createChatCompletion(
       { ...req.body, messages: enrichedMessages },
       { cache: aiCache, log: req.log },
     );
 
     recordCache(cacheStatus);
     res.set('X-Cache', cacheStatus);
+    if (providerUsed) res.set('X-Prism-Provider', String(providerUsed));
+    if (modelUsed) res.set('X-Prism-Model', String(modelUsed));
     return res.status(200).json(result);
   } catch (err) {
     next(err);

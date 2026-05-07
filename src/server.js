@@ -61,7 +61,14 @@ function createApp() {
   app.use(
     cors({
       // Allow browser JS to read these on cross-origin responses (e.g. Vite dev → API).
-      exposedHeaders: ['X-Cache', 'X-RateLimit-Limit', 'X-RateLimit-Remaining', 'Retry-After'],
+      exposedHeaders: [
+        'X-Cache',
+        'X-RateLimit-Limit',
+        'X-RateLimit-Remaining',
+        'Retry-After',
+        'X-Prism-Provider',
+        'X-Prism-Model',
+      ],
     }),
   );
 

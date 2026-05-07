@@ -31,6 +31,26 @@ function safeString(value) {
   return typeof value === 'string' ? value : '';
 }
 
+function parseApiKeysFromEnv(env, { primaryKey, listKey } = {}) {
+  const parts = [];
+
+  const primary = safeString(env?.[primaryKey]);
+  const list = safeString(env?.[listKey]);
+
+  // Support comma OR newline separated values in either var.
+  for (const source of [primary, list]) {
+    if (!source.trim()) continue;
+    for (const raw of source.split(/[\n,]+/g)) {
+      const key = raw.trim();
+      if (key) parts.push(key);
+    }
+  }
+
+  // De-dupe while keeping order (don’t leak count by logging).
+  const seen = new Set();
+  return parts.filter((k) => (seen.has(k) ? false : (seen.add(k), true)));
+}
+
 function stableId(prefix = 'chatcmpl') {
   // Avoid leaking user content in IDs.
   const rand = crypto.randomBytes(12).toString('hex');
@@ -185,35 +205,30 @@ function createOpenAICompatibleAdapter({
 function buildProviderChainFromEnv(env = process.env) {
   const timeoutMs = parsePositiveInt(env.LLM_PROVIDER_TIMEOUT_MS, 15000);
 
-  const groq = createOpenAICompatibleAdapter({
-    name: 'groq',
-    baseUrl: env.GROQ_BASE_URL || 'https://api.groq.com/openai/v1',
-    apiKey: env.GROQ_API_KEY,
-    timeoutMs,
-  });
+  const groqKeys = parseApiKeysFromEnv(env, { primaryKey: 'GROQ_API_KEY', listKey: 'GROQ_API_KEYS' });
+  const groqAdapters = groqKeys.map((apiKey, i) =>
+    createOpenAICompatibleAdapter({
+      name: `groq-${i + 1}`,
+      baseUrl: env.GROQ_BASE_URL || 'https://api.groq.com/openai/v1',
+      apiKey,
+      timeoutMs,
+    }),
+  );
 
   const geminiAuthMode = (env.GEMINI_AUTH_MODE || 'x-goog-api-key').toLowerCase();
-  const gemini = createOpenAICompatibleAdapter({
-    name: 'gemini',
-    baseUrl: env.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com/v1beta/openai',
-    apiKey: env.GEMINI_API_KEY,
-    authMode: geminiAuthMode,
-    timeoutMs,
-  });
+  const geminiKeys = parseApiKeysFromEnv(env, { primaryKey: 'GEMINI_API_KEY', listKey: 'GEMINI_API_KEYS' });
+  const geminiAdapters = geminiKeys.map((apiKey, i) =>
+    createOpenAICompatibleAdapter({
+      name: `gemini-${i + 1}`,
+      baseUrl: env.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com/v1beta/openai',
+      apiKey,
+      authMode: geminiAuthMode,
+      timeoutMs,
+    }),
+  );
 
-  const openrouter = createOpenAICompatibleAdapter({
-    name: 'openrouter',
-    baseUrl: env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1',
-    apiKey: env.OPENROUTER_API_KEY,
-    extraHeaders: {
-      // Optional but recommended by OpenRouter.
-      'http-referer': env.OPENROUTER_HTTP_REFERER,
-      'x-title': env.OPENROUTER_X_TITLE,
-    },
-    timeoutMs,
-  });
-
-  return [groq, gemini, openrouter];
+  // Order matters: try Groq keys first, then Gemini keys.
+  return [...groqAdapters, ...geminiAdapters];
 }
 
 function pickBodyFields(input = {}) {
@@ -242,12 +257,25 @@ function pickBodyFields(input = {}) {
     }
   }
 
+  // If caller did not specify a model, default to auto-routing.
+  if (typeof out.model !== 'string' || !out.model.trim()) {
+    out.model = 'auto';
+  }
+
   return out;
 }
 
 function createLlmRouter(options = {}) {
   const providers = Array.isArray(options.providers) && options.providers.length > 0 ? options.providers : buildProviderChainFromEnv();
   const echoFallbackEnabled = String(options.echoFallbackEnabled ?? process.env.PRISM_ECHO_FALLBACK ?? 'false').toLowerCase() === 'true';
+  const autoModelOrder = [
+    // Groq first.
+    'llama-3.1-8b-instant',
+    'llama-3.3-70b-versatile',
+    // Then Gemini.
+    'gemini-2.5-flash',
+    'gemini-2.5-pro',
+  ];
 
   function echoCompletion({ model, messages }) {
     const created = nowUnixSeconds();
@@ -293,17 +321,22 @@ function createLlmRouter(options = {}) {
 
     const errors = [];
 
+    const isAutoModel = String(body?.model || '').trim().toLowerCase() === 'auto';
+
     for (const provider of configured) {
-      try {
-        const upstream = await provider.createChatCompletion(body, { log });
-        const normalized = coerceOpenAIChatCompletion(upstream, body.model);
-        recordProvider(provider.name, 'success');
-        log?.info?.({ provider: provider.name }, 'LLM provider succeeded');
-        return normalized;
-      } catch (err) {
-        recordProvider(provider.name, 'failure');
-        errors.push({ provider: provider.name, err });
-        log?.warn?.({ provider: provider.name, status: err?.status, err }, 'LLM provider failed (trying next)');
+      const candidateModels = isAutoModel ? autoModelOrder : [body.model];
+      for (const candidateModel of candidateModels) {
+        try {
+          const upstream = await provider.createChatCompletion({ ...body, model: candidateModel }, { log });
+          const normalized = coerceOpenAIChatCompletion(upstream, candidateModel);
+          recordProvider(provider.name, 'success');
+          log?.info?.({ provider: provider.name, model: candidateModel }, 'LLM provider succeeded');
+          return { result: normalized, providerUsed: provider.name, modelUsed: normalized.model || candidateModel };
+        } catch (err) {
+          recordProvider(provider.name, 'failure');
+          errors.push({ provider: provider.name, model: candidateModel, err });
+          log?.warn?.({ provider: provider.name, model: candidateModel, status: err?.status, err }, 'LLM provider failed (trying next)');
+        }
       }
     }
 
@@ -311,7 +344,8 @@ function createLlmRouter(options = {}) {
 
     if (echoFallbackEnabled) {
       log?.error?.({ errors: errors.map((e) => ({ provider: e.provider, status: e.err?.status, message: e.err?.message })) }, 'All providers failed; using echo fallback');
-      return echoCompletion({ model: body.model, messages: body.messages });
+      const echoed = echoCompletion({ model: body.model, messages: body.messages });
+      return { result: echoed, providerUsed: 'echo', modelUsed: echoed.model || body.model };
     }
 
     const err = new Error('All LLM providers failed');
@@ -319,14 +353,15 @@ function createLlmRouter(options = {}) {
     err.cause = last?.err;
     err.exposeUpstreamFailure = true;
     err.details = {
-      attempts: errors.map(({ provider, err: e }) => ({
+      attempts: errors.map(({ provider, model, err: e }) => ({
         provider,
+        model,
         httpStatus: Number.isInteger(e?.status) ? e.status : null,
         code: typeof e?.code === 'string' ? e.code : undefined,
       })),
       modelRequested: typeof body?.model === 'string' ? body.model : undefined,
       hint:
-        'Each provider receives the same `model`; use IDs valid for Groq/Gemini, or temporarily unset upstream keys you are not testing.',
+        'Each provider receives the same `model`; use IDs valid for Groq/Gemini. If you configured multiple keys, Prism will try them in order (groq-1, groq-2, … then gemini-1, …).',
     };
     throw err;
   }
@@ -342,7 +377,7 @@ function createLlmRouter(options = {}) {
     const body = pickBodyFields(params);
     const providerHint = typeof params?.provider === 'string' ? params.provider.trim() : '';
     const { cache, log } = ctx || {};
-    const modelLabel = typeof body.model === 'string' && body.model.trim() ? body.model.trim() : 'unknown';
+    const modelLabel = typeof body.model === 'string' && body.model.trim() ? body.model.trim() : 'auto';
     const estimatedInputTokens = Number.isInteger(params?.usage?.prompt_tokens)
       ? params.usage.prompt_tokens
       : estimateInputTokens(body.messages);
@@ -365,7 +400,8 @@ function createLlmRouter(options = {}) {
         log?.warn?.({ err }, 'AI cache read failed (bypassing)');
       }
 
-      const result = await tryProviders(body, { log, providerHint });
+      const upstreamResult = await tryProviders(body, { log, providerHint });
+      const result = upstreamResult?.result ?? upstreamResult;
       const outputTokens = estimateOutputTokens(result);
       recordOutputTokens(modelLabel, outputTokens);
 
@@ -375,13 +411,19 @@ function createLlmRouter(options = {}) {
         log?.warn?.({ err }, 'AI cache write failed (bypassing)');
       }
 
-      return { result, cacheStatus: 'MISS' };
+      return {
+        result,
+        cacheStatus: 'MISS',
+        providerUsed: upstreamResult?.providerUsed,
+        modelUsed: upstreamResult?.modelUsed,
+      };
     }
 
-    const result = await tryProviders(body, { log, providerHint });
+    const upstreamResult = await tryProviders(body, { log, providerHint });
+    const result = upstreamResult?.result ?? upstreamResult;
     const outputTokens = estimateOutputTokens(result);
     recordOutputTokens(modelLabel, outputTokens);
-    return { result, cacheStatus: 'BYPASS' };
+    return { result, cacheStatus: 'BYPASS', providerUsed: upstreamResult?.providerUsed, modelUsed: upstreamResult?.modelUsed };
   }
 
   return { createChatCompletion };
