@@ -1,15 +1,18 @@
 # Prism
 
 Prism is an OpenAI-compatible AI API gateway built with Node.js and Express.  
-It routes chat completion requests across multiple providers (Groq, Gemini), adds API-key auth, rate limiting, optional response caching, and prompt safety checks.
+It routes chat completions across **Groq** and **Gemini** with automatic failover, adds API-key auth, rate limiting, optional response caching, and prompt safety checks.
 
 ## What It Does
 
 - Exposes `POST /v1/chat/completions` in OpenAI-style request/response shape
 - Validates client API keys (`Authorization: Bearer ...` or `x-api-key`)
 - Enforces per-key rate limiting via Upstash Redis (sliding window)
-- Tries providers in order and fails over if one provider errors
-- Optionally returns an echo fallback when all providers fail
+- **Auto-routing:** omit `model` or send `"model": "auto"` to try Groq models first, then Gemini (same four catalog IDs), picking the first upstream that succeeds
+- Optional `provider` hint in the JSON body restricts failover to a single provider name (e.g. `groq`, `gemini`) when you need it for debugging
+- Optionally returns an echo fallback when all providers fail (`PRISM_ECHO_FALLBACK=true`)
+- Lists configured upstream catalog at `GET /providers/models` (no secrets)
+- Successful completions may include **`X-Prism-Provider`** and **`X-Prism-Model`** response headers (also exposed to browsers via CORS for the playground)
 - Supports OpenAPI docs at `/api-docs` and raw spec at `/openapi.json`
 
 ## Tech Stack
@@ -31,12 +34,14 @@ src/
   services/
     ai.service.js           # Service facade
     llmRouter.js            # Provider routing, normalization, failover
+    modelCatalog.js         # Groq/Gemini model metadata for /providers/models
   middleware/
     auth.js                 # API key auth
     rateLimiter.js          # Redis sliding-window limiter
     aiCache.js              # Optional response cache (Redis)
     promptSafety.js         # Prompt safety heuristics
     errorHandler.js         # Central error handler
+frontend/                   # React + Vite playground UI (Dockerfile included)
 ```
 
 ## Requirements
@@ -48,7 +53,7 @@ src/
 
 ## Environment Variables
 
-Create a `.env` file in the project root.
+Create a `.env` file in the project root (see `.env.example`).
 
 ### Server
 
@@ -72,12 +77,10 @@ Use one of the following to allow client calls into Prism:
 
 ### AI Providers (configure at least one)
 
-- `GROQ_API_KEY` (single key or comma/newline separated)
-- `GROQ_API_KEYS` (explicit allow-list; comma/newline separated)
+- `GROQ_API_KEY` — one key covers all Groq models in the catalog (optional: comma/newline list or `GROQ_API_KEYS` for ordered failover across keys)
 - `GROQ_BASE_URL` (default: `https://api.groq.com/openai/v1`)
 
-- `GEMINI_API_KEY` (single key or comma/newline separated)
-- `GEMINI_API_KEYS` (explicit allow-list; comma/newline separated)
+- `GEMINI_API_KEY` — one key covers all Gemini models in the catalog (optional: comma/newline list or `GEMINI_API_KEYS` for ordered failover across keys)
 - `GEMINI_BASE_URL` (default: `https://generativelanguage.googleapis.com/v1beta/openai`)
 - `GEMINI_AUTH_MODE` (default: `x-goog-api-key`; also supports `bearer` and `api-key`)
 
@@ -116,54 +119,60 @@ npm start
 - `GET /health` -> `{ "ok": true }`
 - `GET /openapi.json` -> OpenAPI JSON
 - `GET /api-docs` -> Swagger UI
+- `GET /providers/models` -> `{ "providers": [...] }` (configured providers only; public)
 - `POST /v1/chat/completions` -> main AI gateway endpoint (auth required)
 
-## Request Example
+### Auto model routing
 
-Use `body.json` as a base payload:
+Send `"model": "auto"` (or omit `model`; Prism defaults it). Prism tries, in order:
 
-```json
-{
-  "messages": [
-    { "role": "user", "content": "hi" }
-  ]
-}
-```
+1. `llama-3.1-8b-instant` (Groq)
+2. `llama-3.3-70b-versatile` (Groq)
+3. `gemini-2.5-flash` (Gemini)
+4. `gemini-2.5-pro` (Gemini)
 
-Call the endpoint:
+Successful responses include **`X-Prism-Provider`** and **`X-Prism-Model`** so clients can show which upstream answered.
 
-```bash
-curl -X POST http://localhost:3000/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -H "x-api-key: YOUR_ALLOWED_API_KEY" \
-  -d @body.json
-```
 
 ## Docker
 
-Build and run:
+### API only
 
 ```bash
 docker build -t prism .
 docker run --rm -p 3000:3000 --env-file .env prism
 ```
 
+### API + frontend (recommended)
+
+From the repo root:
+
+```bash
+cp .env.example .env   # then edit: ALLOWED_API_KEY, Redis, GROQ/GEMINI keys
+docker compose up --build
+```
+
+- UI: [http://localhost:8080](http://localhost:8080)
+- API: [http://localhost:3000](http://localhost:3000)
+
+The frontend image is built with `VITE_API_BASE_URL=http://localhost:3000` so the **browser** calls the API on your machine. If your API is on another origin, rebuild the frontend with a different base URL (see comments in `docker-compose.yml`).
+
 ## Troubleshooting: "All LLM providers failed"
 
-That error means Prism reached your app, but **every** configured upstream returned an error. Check the following.
+That error means Prism reached your app, but **every** configured upstream attempt returned an error. Check the following.
 
 1. **Confirm the browser points at Prism**  
-   The frontend uses `VITE_API_BASE_URL` (default `http://localhost:3000`). Only one process can bind to a port. For example, if `php -S localhost:3000` is running, Node/Prism cannot use `3000`; stop the other server or run Prism on another port and set `VITE_API_BASE_URL` accordingly.  
+   The frontend uses `VITE_API_BASE_URL` (default `http://localhost:3000`). Only one process can bind to a port.  
    Quick check: open `GET http://localhost:3000/health` — Prism returns `{"ok":true}`.
 
 2. **Confirm provider keys load in the same process as Prism**  
-   `GROQ_API_KEY` / `GEMINI_API_KEY` must exist in the environment of the **Node** server. For Docker: use `--env-file .env` or `-e` and recreate the container after changing `.env`. For `npm start`, use a project `.env` loaded at startup.
+   `GROQ_API_KEY` / `GEMINI_API_KEY` must exist in the environment of the **Node** server. For Docker: ensure `.env` exists next to `docker-compose.yml` (Compose passes it into `api`). Recreate containers after changing `.env`.
 
 3. **Read logs**  
-   Structured logs include `LLM provider failed (trying next)` with `provider` and `status` when an upstream returns a non-2xx status or times out.
+   Structured logs include `LLM provider failed (trying next)` with `provider`, `model`, and `status` when an upstream returns a non-2xx status or times out.
 
-4. **Failover uses one `model` for every provider**  
-   Providers run in order until one succeeds. Each attempt uses the **same** `model` from the client. A Groq-specific id (e.g. `llama-3.1-8b-instant`) may be invalid for Gemini if Groq fails and Prism falls through—use a model id valid for the provider you expect to answer, or adjust keys so the right provider is tried first.
+4. **Auto mode tries multiple models**  
+   With `model: auto`, Prism cycles through the four catalog models until one succeeds. If you pin a specific `model`, every provider attempt uses that id until failover exhausts options.
 
 **Dev-only JSON details:** When `NODE_ENV` is not `production`, error responses for upstream exhaustion can include `details` (`attempts`, `modelRequested`, `hint`). In production, set `PRISM_EXPOSE_UPSTREAM_ERRORS=true` to include the same structured `details` field (no API key material).
 
@@ -198,7 +207,7 @@ Logging is structured with pino and sensitive headers are redacted (`authorizati
 
 ## Frontend (React + Vite)
 
-A modern graphite/platinum frontend is available in `frontend/`.
+A playground UI lives in `frontend/`.
 
 ```bash
 cd frontend
@@ -206,10 +215,12 @@ npm install
 npm run dev
 ```
 
-Set frontend API target with:
+Point it at the API:
 
 ```bash
 VITE_API_BASE_URL=http://localhost:3000
 ```
 
-See `frontend/README.md` for full UI details and production build instructions.
+The playground stores your Prism client key in **localStorage** so you do not have to paste it on every refresh (clear with **Clear saved key** in the UI).
+
+See `frontend/README.md` for build details.

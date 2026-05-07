@@ -1,9 +1,19 @@
-# Run API + UI together: docker compose up --build
+# Full stack: Prism API + static UI (nginx).
 #
-# UI: http://localhost:8080  ·  API: http://localhost:3000
+#   docker compose up --build
 #
-# API keys: keep a `.env` next to this file (see `.env.example`). Compose passes it into the `api` service.
-# Other hosts / HTTPS: rebuild frontend with --build-arg VITE_API_BASE_URL=https://your-api-host
+# URLs:
+#   UI   → http://localhost:8080
+#   API  → http://localhost:3000
+#
+# Prerequisites:
+#   - Copy `.env.example` to `.env` and set `ALLOWED_API_KEY`, Redis, and at least one of
+#     `GROQ_API_KEY` / `GEMINI_API_KEY`. Compose mounts `.env` into the API container.
+#
+# Browser vs Docker networking:
+#   The UI is built with VITE_API_BASE_URL=http://localhost:3000 so the *browser* talks to the API
+#   on your host. If you publish the API on another host/port, rebuild:
+#     docker compose build --build-arg VITE_API_BASE_URL=https://api.example.com frontend
 
 services:
   api:
@@ -15,7 +25,6 @@ services:
     environment:
       PORT: "3000"
       NODE_ENV: production
-    # Runtime secrets (not in the image); copy from .env.example if needed.
     env_file:
       - .env
 
@@ -24,9 +33,9 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        # Browser calls this URL (must match published api port on your machine).
         VITE_API_BASE_URL: http://localhost:3000
     ports:
       - "8080:80"
     depends_on:
-      - api
+      api:
+        condition: service_healthy
