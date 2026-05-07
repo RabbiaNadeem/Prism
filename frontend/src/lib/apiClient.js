@@ -35,7 +35,7 @@ function parseErrorMessage(status, payload) {
 
 export async function createChatCompletion({ apiKey, provider, model, messages }) {
   const body = {
-    model: model || 'gpt-4.1-mini',
+    model: model || 'auto',
     messages,
     stream: false,
   };
@@ -55,6 +55,8 @@ export async function createChatCompletion({ apiKey, provider, model, messages }
     rateLimitLimit: response.headers.get('X-RateLimit-Limit'),
     rateLimitRemaining: response.headers.get('X-RateLimit-Remaining'),
     retryAfter: response.headers.get('Retry-After'),
+    providerUsed: response.headers.get('X-Prism-Provider'),
+    modelUsed: response.headers.get('X-Prism-Model'),
   };
 
   if (!response.ok) {

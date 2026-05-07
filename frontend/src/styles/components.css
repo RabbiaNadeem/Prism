@@ -113,6 +113,7 @@
   flex-direction: column;
   min-height: 16rem;
   max-height: min(70vh, 36rem);
+  overflow-y: auto;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: 1rem 1rem 0.85rem;
@@ -136,14 +137,23 @@
 
 .playground-conversation .message-list {
   margin-top: 0.65rem;
-  overflow-y: auto;
-  flex: 1;
   padding-right: 0.25rem;
 }
 
 .chat-form {
   display: grid;
   gap: 0.75rem;
+}
+
+.row-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.btn-secondary {
+  color: var(--platinum-strong);
+  background: rgba(242, 244, 248, 0.06);
+  border-color: rgba(215, 219, 226, 0.18);
 }
 
 .chat-form label {
@@ -200,6 +210,14 @@
   letter-spacing: 0.08em;
   font-size: 0.73rem;
   color: var(--accent);
+}
+
+.message-served-by {
+  margin-top: 0.65rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid rgba(215, 219, 226, 0.12);
+  font-size: 0.78rem;
+  color: var(--muted);
 }
 
 .feature-grid {
