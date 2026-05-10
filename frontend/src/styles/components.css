@@ -114,11 +114,18 @@
   min-height: 16rem;
   max-height: min(70vh, 36rem);
   overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: 1rem 1rem 0.85rem;
   background: #0d1118;
   min-width: 0;
+}
+
+.playground-conversation::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
 
 .playground-conversation .conversation-hint {

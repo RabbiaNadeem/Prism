@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createChatCompletion } from '../../lib/apiClient';
 import { fetchModelCatalog } from '../../lib/modelCatalog';
 import { MessageList } from './MessageList';
@@ -30,6 +30,13 @@ export function ChatPlayground() {
   const [error, setError] = useState('');
   const [meta, setMeta] = useState(null);
   const [messages, setMessages] = useState([]);
+  const conversationRef = useRef(null);
+
+  useLayoutEffect(() => {
+    const el = conversationRef.current;
+    if (!el || messages.length === 0) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: 'auto' });
+  }, [messages, isLoading]);
 
   useEffect(() => {
     try {
@@ -185,7 +192,11 @@ export function ChatPlayground() {
           ) : null}
         </div>
 
-        <aside className="playground-conversation" aria-label="User and assistant messages">
+        <aside
+          ref={conversationRef}
+          className="playground-conversation"
+          aria-label="User and assistant messages"
+        >
           <p className="eyebrow">Conversation</p>
           <p className="conversation-hint">Your prompts and assistant replies appear here.</p>
           {messages.length === 0 ? (
