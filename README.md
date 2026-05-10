@@ -161,11 +161,11 @@ The frontend image is built with `VITE_API_BASE_URL=http://localhost:3000` so th
 
 Workflow [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on pushes and pull requests to **`main`** / **`master`**:
 
-1. **Backend** — `npm ci`, `npm test`, and a one-line bootstrap check that loads `createApp()` (no server listen).
+1. **Backend** — `npm ci`, `npm test`, and a bootstrap check that loads `createApp()` with **placeholder Upstash env vars** (only so the rate limiter can construct; no Redis traffic occurs).
 2. **Frontend** — `npm ci` + `npm run build` in `frontend/`.
 3. **Docker** — builds the API image (`Dockerfile`) and the UI image (`frontend/Dockerfile`) to verify images still compile.
 
-The repo does not define a deploy job yet. Typical next steps: add secrets (`GITHUB_TOKEN` often suffices for GHCR), then extend the workflow with `docker/build-push-action` and tags, or trigger your host (Fly.io, Railway, Kubernetes, etc.) from a separate workflow.
+For integration tests that hit `/v1`, use real **`UPSTASH_REDIS_REST_URL`** / **`UPSTASH_REDIS_REST_TOKEN`** via [encrypted secrets](https://docs.github.com/en/actions/security-guides/using-secrets-in-github-actions).
 
 ## Troubleshooting: "All LLM providers failed"
 

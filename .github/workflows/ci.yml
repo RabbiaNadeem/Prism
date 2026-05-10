@@ -34,6 +34,10 @@ jobs:
         run: npm test
 
       - name: Verify Express app bootstrap
+        env:
+          # Rate limiter validates Redis env at app wiring time; no requests run in this step.
+          UPSTASH_REDIS_REST_URL: https://ci-placeholder.upstash.io
+          UPSTASH_REDIS_REST_TOKEN: ci-placeholder-not-used-until-http-requests
         run: node -e "require('./src/server.js').createApp(); console.log('bootstrap ok');"
 
   frontend:
