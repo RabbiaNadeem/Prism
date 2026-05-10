@@ -157,6 +157,16 @@ docker compose up --build
 
 The frontend image is built with `VITE_API_BASE_URL=http://localhost:3000` so the **browser** calls the API on your machine. If your API is on another origin, rebuild the frontend with a different base URL (see comments in `docker-compose.yml`).
 
+## CI/CD (GitHub Actions)
+
+Workflow [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on pushes and pull requests to **`main`** / **`master`**:
+
+1. **Backend** — `npm ci`, `npm test`, and a one-line bootstrap check that loads `createApp()` (no server listen).
+2. **Frontend** — `npm ci` + `npm run build` in `frontend/`.
+3. **Docker** — builds the API image (`Dockerfile`) and the UI image (`frontend/Dockerfile`) to verify images still compile.
+
+The repo does not define a deploy job yet. Typical next steps: add secrets (`GITHUB_TOKEN` often suffices for GHCR), then extend the workflow with `docker/build-push-action` and tags, or trigger your host (Fly.io, Railway, Kubernetes, etc.) from a separate workflow.
+
 ## Troubleshooting: "All LLM providers failed"
 
 That error means Prism reached your app, but **every** configured upstream attempt returned an error. Check the following.
